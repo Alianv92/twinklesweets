@@ -1,72 +1,131 @@
 "use client";
 
-import Image from "next/image";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useCart } from "../../lib/cart";
 import { PRODUCTS } from "../../lib/products";
 
 export default function CartPage() {
   const cart = useCart();
+  const [busy, setBusy] = useState(false);
 
-  const items = cart.items.map((i) => {
-    const p = PRODUCTS.find((p) => p.id === i.id)!;
-    return { ...p, qty: i.qty, lineTotal: p.price * i.qty };
-  });
+  const lines = useMemo(() => {
+    return cart.items.map((it) => {
+      const p = PRODUCTS.find((x) => x.id === it.id);
+      return p ? { ...p, qty: it.qty } : null;
+    }).filter(Boolean) as Array<{ id: string; name: string; price: number; image: string; qty: number }>;
+  }, [cart.items]);
 
-  const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
+  const subtotal = lines.reduce((sum, l) => sum + l.price * l.qty, 0);
 
-  if (items.length === 0) {
+  async function handleCheckout() {
+    try {
+      setBusy(true);
+
+      const payload = {
+        items: cart.items.map(({ id, qty }) => ({ id, qty })),
+      };
+
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Checkout failed");
+      }
+
+      if (data?.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = data.url as string;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (err: any) {
+      alert(err?.message || "Checkout error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (lines.length === 0) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-16 text-center">
+      <main className="mx-auto max-w-3xl px-6 py-16 text-center">
         <h1 className="text-2xl font-semibold">Your cart is empty</h1>
-        <Link href="/#products" className="inline-block mt-6 rounded-xl bg-[var(--gold)] px-5 py-2.5 shadow-sm hover:shadow">
-          Browse products
+        <p className="mt-3 text-[var(--muted)]">
+          Browse our designs and add something you love.
+        </p>
+        <Link
+          href="/#products"
+          className="inline-block mt-6 rounded-xl bg-[var(--gold)] px-5 py-2.5 font-medium shadow-sm hover:shadow"
+        >
+          Shop products
         </Link>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10 grid md:grid-cols-[1fr_320px] gap-10">
-      <div className="space-y-6">
-        {items.map(({ id, name, image, price, qty, lineTotal }) => (
-          <div key={id} className="flex gap-4 items-center rounded-xl bg-white shadow-sm ring-1 ring-black/5 p-4">
-            <Image src={image} alt={name} width={96} height={96} className="rounded-lg object-cover" />
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <h1 className="text-2xl font-semibold">Cart</h1>
+
+      <ul className="mt-6 divide-y divide-black/10 rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+        {lines.map((l) => (
+          <li key={l.id} className="p-4 flex items-center gap-4">
             <div className="flex-1">
-              <div className="font-medium">{name}</div>
-              <div className="text-sm text-[var(--muted)]">${(price / 100).toFixed(2)}</div>
-              <div className="mt-2 flex items-center gap-3">
-                <label className="text-sm text-[var(--muted)]">Qty</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={qty}
-                  onChange={(e) => cart.setQty(id, Math.max(1, Number(e.target.value) || 1))}
-                  className="w-16 rounded-lg border border-black/10 px-2 py-1 text-center"
-                />
-                <button onClick={() => cart.remove(id)} className="text-sm underline">
-                  Remove
-                </button>
+              <div className="font-medium">{l.name}</div>
+              <div className="text-sm text-[var(--muted)]">
+                {(l.price / 100).toLocaleString(undefined, {
+                  style: "currency",
+                  currency: "USD",
+                })}{" "}
+                × {l.qty}
               </div>
             </div>
-            <div className="text-right font-medium">${(lineTotal / 100).toFixed(2)}</div>
-          </div>
-        ))}
-      </div>
 
-      <aside className="rounded-xl bg-white shadow-sm ring-1 ring-black/5 p-5 h-fit">
-        <div className="flex justify-between">
-          <span className="text-sm text-[var(--muted)]">Subtotal</span>
-          <span className="font-medium">${(subtotal / 100).toFixed(2)}</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                className="w-16 rounded-lg border border-black/20 px-2 py-1 text-center"
+                min={1}
+                value={l.qty}
+                onChange={(e) => cart.setQty(l.id, Number(e.target.value))}
+              />
+              <button
+                className="text-sm underline"
+                onClick={() => cart.remove(l.id)}
+              >
+                Remove
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-6 flex items-center justify-between">
+        <div className="text-lg">
+          <span className="text-[var(--muted)] mr-2">Subtotal:</span>
+          <span className="font-semibold">
+            {(subtotal / 100).toLocaleString(undefined, {
+              style: "currency",
+              currency: "USD",
+            })}
+          </span>
         </div>
-        <div className="mt-6">
-          <form action="/api/checkout" method="POST">
-            <button className="w-full rounded-xl bg-[var(--gold)] px-5 py-2.5 font-medium shadow-sm hover:shadow">
-              Checkout
-            </button>
-          </form>
-        </div>
-      </aside>
-    </div>
+
+        <button
+          onClick={handleCheckout}
+          disabled={busy}
+          className="rounded-xl bg-[var(--gold)] px-5 py-2.5 font-medium shadow-sm hover:shadow disabled:opacity-60"
+        >
+          {busy ? "Redirecting…" : "Checkout"}
+        </button>
+      </div>
+    </main>
   );
 }
