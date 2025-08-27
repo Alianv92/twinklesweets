@@ -51,7 +51,7 @@ export default function HomePage() {
             ].map((name, index) => (
               <article key={name} className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 p-5">
                 <Image
-                  src={`/product${index+1}.png`}
+                  src={`/Product${index+1}.png`}
                   alt={name}
                   width={400}
                   height={400}
