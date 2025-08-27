@@ -27,25 +27,26 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
+/** Narrow unknown to a generic record */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+/** Type guard for persisted cart items */
+function isCartItem(v: unknown): v is CartItem {
+  if (!isRecord(v)) return false;
+  return typeof v.id === "string" && typeof v.qty === "number";
+}
+
 function readInitialCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem("cart:v1");
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      // basic validation
-      return parsed
-        .filter(
-          (x) =>
-            x &&
-            typeof x === "object" &&
-            typeof (x as any).id === "string" &&
-            typeof (x as any).qty === "number"
-        )
-        .map((x) => ({ id: (x as any).id, qty: (x as any).qty }));
-    }
-    return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cleaned = parsed.filter(isCartItem);
+    return cleaned.map((x) => ({ id: x.id, qty: x.qty }));
   } catch {
     return [];
   }
@@ -54,7 +55,7 @@ function readInitialCart(): CartItem[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => readInitialCart());
 
-  // Persist to localStorage — use explicit `if` to satisfy ESLint.
+  // Persist to localStorage — explicit if keeps ESLint happy.
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("cart:v1", JSON.stringify(items));
@@ -99,7 +100,7 @@ export function useCart(): CartContextValue {
   return ctx;
 }
 
-// Helper to compute a display-ready line list in Cart pages (optional)
+/** Optional helper for the Cart page */
 export function getCartLines(items: CartItem[]) {
   return items
     .map((line) => {
