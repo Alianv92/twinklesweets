@@ -4,10 +4,11 @@ import { PRODUCTS } from "../../../lib/products";
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecret) {
-  console.warn("⚠️ STRIPE_SECRET_KEY is not set. Set it in .env.local for local dev.");
+  console.warn("STRIPE_SECRET_KEY is not set. Set it in .env.local for local dev.");
 }
 
-const stripe = new Stripe(stripeSecret || "", { apiVersion: "2024-06-20" });
+// ✅ Do not pin apiVersion, let Stripe SDK pick the correct one
+const stripe = new Stripe(stripeSecret || "");
 
 type CheckoutItem = {
   id: string;
@@ -35,15 +36,11 @@ export async function POST(req: Request) {
       } as const;
     });
 
-    // ✅ Build base URL dynamically
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items,
-      success_url: `${baseUrl}/thank-you`,
-      cancel_url: `${baseUrl}/cancelled`,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/thank-you`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/cancelled`,
       shipping_address_collection: { allowed_countries: ["US", "CA"] },
     });
 
